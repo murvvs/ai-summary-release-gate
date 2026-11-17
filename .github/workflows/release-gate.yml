@@ -1,0 +1,83 @@
+name: release-gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: summary eval (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:eval
+        env: { CI: 'true' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-evidence
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  ui-gate:
+    name: dashboard UI gate (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+        env: { CI: 'true' }
+      # Failure evidence: HTML report, traces, screenshots, videos, JUnit XML.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-evidence
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  gate-sensitivity:
+    name: gate catches intentional regression (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Suite must FAIL when the citation check is broken
+        run: |
+          if BREAK_CITATION_CHECK=1 npx playwright test --project=ui --reporter=line; then
+            echo "::error::Gate did not catch the intentional regression"
+            exit 1
+          fi
+          echo "Regression detected as expected."
+
+  release-gate:
+    name: release-gate (required check)
+    if: always()
+    needs: [eval, ui-gate, gate-sensitivity]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "eval=${{ needs.eval.result }} ui=${{ needs.ui-gate.result }} sensitivity=${{ needs.gate-sensitivity.result }}"
+          test "${{ needs.eval.result }}" = success && test "${{ needs.ui-gate.result }}" = success && test "${{ needs.gate-sensitivity.result }}" = success

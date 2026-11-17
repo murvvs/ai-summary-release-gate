@@ -1,0 +1,24 @@
+{
+  "name": "ai-summary-release-gate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright release gate for an AI-assisted ticket summary feature",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:eval": "playwright test --project=eval",
+    "test:ui": "playwright test --project=ui",
+    "test:regression": "cross-env BREAK_CITATION_CHECK=1 playwright test --project=ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.0.0",
+    "cross-env": "^7.0.3",
+    "typescript": "^5.6.0"
+  }
+}
